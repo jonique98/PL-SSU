@@ -64,7 +64,7 @@ void program();
 void match(TokenType type);
 void error(const char *msg);
 double find_var_value(const char *name);
-void set_var_value(const char *name, double value, int isTrue);
+void set_var_value(const char *name, VariableType type, double value, int isTrue);
 
 // 스페이스 다 없애고 개행 있다면 널문자로 바꿈
 char *remove_space(char *temp) {
@@ -132,7 +132,7 @@ Token get_token() {
 			token.value[0] = input[pos++];
 			token.type = token_ASSIGN;
 			if(input[pos] && input[pos] == '=') {
-				token.value[0] = input[pos++];
+				token.value[1] = input[pos++];
 				token.type = token_RELOP;
 			}
 			return token;
@@ -254,8 +254,9 @@ int find_variable(const char *name) {
 }
 
 
-void set_var_value(const char *name, double value, int isTrue) {
+void set_var_value(const char *name, VariableType type, double value, int isTrue) {
 	int index = find_or_create_variable(name);
+	variables[index].type = type;
 	variables[index].value = value;
 	variables[index].isTrue = isTrue;
 }
@@ -268,7 +269,7 @@ double number() {
         error("Expected a number");
     }
     double num = atof(cur_token.value);
-    cur_token = get_token(); // 다음 토큰으로 이동
+    cur_token = get_token();
     return num;
 }
 
@@ -298,7 +299,6 @@ double term() {
             result /= right;
         }
     }
-
     return result;
 }
 
@@ -350,7 +350,7 @@ int bexpr() {
 Variable expr() {
 
 	Token next_token = lookup_next_token();
-	if (next_token.type == token_AEXPROP) {
+	if (next_token.type == token_AEXPROP || next_token.type == token_TERMOP) {
 		double value = aexpr();
 		Variable var;
 		var.value = value;
@@ -378,11 +378,8 @@ void statement() {
         match(token_VAR);
         match(token_ASSIGN);
 
-		if (cur_token.type != token_NUMBER)
-			error("Expected a number");
-
 		Variable var = expr();
-		set_var_value(varName, var.value, var.isTrue);
+		set_var_value(varName, var.type, var.value, var.isTrue);
 
         match(token_SEMI);
     } else if (cur_token.type == token_PRINT) {
@@ -396,7 +393,7 @@ void statement() {
             if (var->type == type_BOOLEAN) {
                 printf("%s\n", var->isTrue ? "TRUE" : "FALSE");
             } else if (var->type == type_NUMBER) {
-				printf("%f\n", var->value);
+				printf("%.2f\n", var->value);
 			}
             match(token_VAR);
 
@@ -418,7 +415,6 @@ void program() {
     }
 }
 
-
 int main() {
 
 	char temp[INPUT_LEN];
@@ -426,10 +422,13 @@ int main() {
 	while(1) {
     	printf(">> ");
 		fgets(temp, INPUT_LEN, stdin);
-
 		input = remove_space(temp);
+
+		// input = malloc(INPUT_LEN);
+		// strcpy(input, remove_space("y= 1 == 1; print y;"));
     	pos = 0;
     	program();
+		exit(1);
 	}
 
     return 0;
