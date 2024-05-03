@@ -72,12 +72,17 @@ public class Main {
     }
 
 
-	private static boolean syntaxError() {
-		for (int i = 0; i < var_count; i++) {
-			if (variables[i].type == VariableType.type_ERROR) {
-				return true;
-			}
+	private static void set_error_message(String bnf, String error_value, String bnf_type) {
+		if (error_value == null || error_value.isEmpty()) {
+			error_value = "empty string";
 		}
+
+		variables[var_pos].error_message = String.format("\t%s Expected %s but current Token is %s", bnf, bnf_type, error_value);
+	}
+
+	private static boolean syntaxError() {
+		if(variables[var_pos].type == VariableType.type_ERROR)
+			return true;
 		return false;
 	}
 
@@ -92,7 +97,7 @@ public class Main {
 			error_value = "empty string";
 		}
 
-		variables[var_pos].error_message = String.format("Syntax error!!\n\t%s Expected %s but current Token is %s", bnf, bnf_type, error_value);
+		variables[var_pos].error_message = String.format("\t%s Expected %s but current Token is %s", bnf, bnf_type, error_value);
 	}
 
 	private static Token getToken() {
@@ -214,7 +219,7 @@ public class Main {
 
 		if (cur_token.type == TokenType.token_ERROR) {
 			variables[var_pos].type = VariableType.type_ERROR;
-			variables[var_pos].error_message = "Syntax error!!\n\t Unexpected Token";
+			variables[var_pos].error_message = "\t Unexpected Token";
 			return false;
 		}
 
@@ -268,6 +273,7 @@ public class Main {
 	static boolean bexpr() {
 		int left = number();
 		if (syntaxError()) {
+			set_error_message("<bexpr> → <number> <relop> <number>", cur_token.value, "<number>");
 			return false;
 		}
 
@@ -275,7 +281,7 @@ public class Main {
 		cur_token = getToken();
 		int right = number();
 		if (syntaxError()) {
-			error("<bexpr> → <number> <relop> <number>", cur_token.value, "<number>");
+			set_error_message("<bexpr> → <number> <relop> <number>", cur_token.value, "<number>");
 			return false;
 		}
 
@@ -477,7 +483,9 @@ public class Main {
 			}
 			statement();
 			if (syntaxError()) {
-				System.out.println(variables[findErrorIndex()].error_message);
+				System.out.printf("Syntax error!!\n");
+				if(variables[findErrorIndex()].error_message != null)
+					System.out.printf("%s\n", variables[findErrorIndex()].error_message);
 				return;
 			}
 		}

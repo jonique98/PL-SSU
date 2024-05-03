@@ -329,6 +329,7 @@ class Interpreter:
 			self.statement()
 			if self.syntax_error():
 				print("Syntax error!!")
+				return
 		print(self.result_buffer)
 		
 	def remove_space(self, s):
