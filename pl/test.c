@@ -1,3 +1,4 @@
+
 // ▸ 입력
 // - 프로그램을 실행하면 사용자는 바로 코드를 입력할 수 있도록 구현함. (엔터키
 // 입력까지를 하나의 프로그램으로 인식함)
@@ -18,10 +19,9 @@
 #include <string.h>
 #include <ctype.h>
 
-#define MAX_VAR 64
-#define token_LEN 64
-#define INPUT_LEN 256
-#define BUFFER_LEN 512
+#define MAX_VAR 256
+#define token_LEN 100
+#define INPUT_LEN 100
 
 typedef enum {
     token_NONE, 
@@ -31,15 +31,14 @@ typedef enum {
 } TokenType;
 
 typedef enum {
-	type,NONE, type_NUMBER, type_BOOLEAN, type_ERROR
+	type_NUMBER, type_BOOLEAN, type_ERROR
 } VariableType;
 
 typedef struct _Variable{
-	char name[token_LEN];
+	char name;
 	double value;
 	int isTrue;
 	VariableType type;
-	char error_message[100];
 } Variable;
 
 typedef struct {
@@ -47,18 +46,15 @@ typedef struct {
     char value[token_LEN];
 } Token;
 
-char result_buffer[BUFFER_LEN];
-char temp_buffer[INPUT_LEN];
-
 Token cur_token;
 char *input;
 int pos = 0;
 Variable variables[MAX_VAR];
 int var_pos = 0;
-int var_count = 1;
+int var_count = 0;
 
 Token get_token();
-void expr();
+Variable expr();
 double aexpr();
 int bexpr();
 double term();
@@ -66,12 +62,13 @@ double factor();
 double number();
 void statement();
 void program();
-int match(TokenType type, const char *bnf, char* error_value, const char *bnf_type);
-void error(const char *bnf, char* error_value, const char *bnf_type);
+void match(TokenType type);
+void error(const char *msg);
 double find_var_value(const char *name);
 void set_var_value(const char *name, VariableType type, double value, int isTrue);
 
 
+// get_token should split the input into meaningful tokens, based on spaces and known operators.
 // <program> → {<statement>}
 // <statement> → <var> = <expr> ; | print <var> ;
 // <expr> → <bexpr> | <aexpr>
@@ -84,15 +81,8 @@ void set_var_value(const char *name, VariableType type, double value, int isTrue
 // <dec> → 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 // <var> → x | y | z'
 
+void error(const char *msg) {
 
-void error(const char *bnf, char* error_value, const char *bnf_type) {
-	if(variables[var_pos].type == type_ERROR)
-		return ;
-	variables[var_pos].type = type_ERROR;
-
-	if(strlen(error_value) == 0 || error_value == NULL)
-		error_value = "empty string";
-	sprintf(variables[var_pos].error_message, "Syntax error!!\n\t%s Expected %s but current Token is %s", bnf, bnf_type, error_value);
 }
 
 Token lookup_next_token() {
@@ -104,11 +94,9 @@ Token lookup_next_token() {
 
 Token get_token() {
 	Token token;
+	memset(token.value, 0, token_LEN);
 
-		if(input[pos] == '\0') {
-		token.type = token_TERMINATE;
-		return token;
-		}
+	while (input[pos] != '\0') {
 
 		if(input[pos] == 'p') {
 			if (strlen(input) - pos < 5) {
@@ -132,7 +120,6 @@ Token get_token() {
 			token.type = token_ASSIGN;
 			if(input[pos] && input[pos] == '=') {
 				token.value[1] = input[pos++];
-				token.value[2] = '\0';
 				token.type = token_RELOP;
 			}
 			return token;
@@ -145,10 +132,11 @@ Token get_token() {
 			}
 
 			if (input[pos] == '!' && input[pos+1] == '=') {
-				token.value[0] = input[pos++];
-				token.value[1] = input[pos++];
-				token.value[2] = '\0';
+				int i = 0;
+				while (input[pos] != ';')
+					token.value[i++] = input[pos++];
 				token.type = token_RELOP;
+				pos += 2;
 				return token;
 			}
 
@@ -157,16 +145,13 @@ Token get_token() {
 		}
 
 		if (input[pos] == '>' || input[pos] == '<') {
-
-			token.value[0] = input[pos++];
-			token.value[1] = '\0';
+			int i = 0;
+			while (input[pos] != ';')
+				token.value[i++] = input[pos++];
 			token.type = token_RELOP;
-
-			if (input[pos] == '='){
-				token.value[1] = input[pos++];
-				token.value[2] = '\0';
+			if(input[pos] && input[pos] == '=') {
+				strcat(token.value, &input[pos++]);
 			}
-
 			return token;
 		}
 
@@ -180,9 +165,13 @@ Token get_token() {
 			return token;
 		}
 
-		if (input[pos] == 'x' || input[pos] == 'y' || input[pos] == 'z') {
+		if (isalpha(input[pos])) {
+			if (input[pos] != 'x' && input[pos] != 'y' && input[pos] != 'z') {
+				token.type = token_ERROR;
+				return token;
+			}
+
 			token.value[0] = input[pos++];
-			token.value[1] = '\0';
 			token.type = token_VAR;
 			return token;
 		}
@@ -207,42 +196,44 @@ Token get_token() {
 			token.type = token_SEMI;
 			return token;
 		}
+	}
+
+	if(input[pos] == '\0') {
+		token.type = token_TERMINATE;
+		return token;
+	}
 
 	token.type = token_ERROR;
-	token.value[0] = input[pos];
 	return token;
 }
 
-int match(TokenType type, const char *bnf, char* error_value, const char *bnf_type) {
-	if(variables[var_pos].type == type_ERROR)
-		return 0;
-
-	if (cur_token.type == token_ERROR) {
-		variables[var_pos].type = type_ERROR;
-		sprintf(variables[var_pos].error_message, "Syntax error!!\n\t Unexpected Token");
-		return 0;
-	}
-
+void match(TokenType type) {
 	if (cur_token.type == type) {
 		cur_token = get_token();
-		return 1;
+	} else {
+		error("syntax error!!");
 	}
-	error(bnf, error_value, bnf_type);
-	return 0;
 }
 
-int syntax_error() {
-	for(int i = 0; i < var_count; i++) {
-		if(variables[i].type == type_ERROR) {
-			return 1;
+int find_or_create_variable(const char *name) {
+	for (int i = 0; i < var_count; i++) {
+		if (variables[i].name == name[0]) {
+			return i;
 		}
 	}
-	return 0;
-}	
+
+	if (var_count >= MAX_VAR) {
+		error("Too many variables");
+	}
+
+	variables[var_count].name = name[0];
+	var_count++;
+	return var_count - 1;
+}
 
 int find_variable(const char *name) {
-	for (int i = var_count-1; i >= 0; i--) {
-		if (strcmp(variables[i].name, name) == 0){
+	for (int i = 0; i < var_count; i++) {
+		if (strcmp(&variables[i].name, name) == 0) {
 			return i;
 		}
 	}
@@ -250,82 +241,61 @@ int find_variable(const char *name) {
 }
 
 void set_var_value(const char *name, VariableType type, double value, int isTrue) {
-	variables[var_pos].type = type;
-	variables[var_pos].value = value;
-	variables[var_pos].isTrue = isTrue;
-	++var_count;
+	int index = find_or_create_variable(name);
+	variables[index].type = type;
+	variables[index].value = value;
+	variables[index].isTrue = isTrue;
 }
 
 // <number> → <dec> {<dec>}
 // <dec> → 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 double number() {
-	if(syntax_error())
-		return 0;
-
-	if(cur_token.type != token_NUMBER){
-		variables[var_pos].type = type_ERROR;
-		return 0;
-	}
-
-	double value = atof(cur_token.value);
+    if (cur_token.type != token_NUMBER) {
+        error("Expected a number");
+    }
+    double num = atof(cur_token.value);
     cur_token = get_token();
-    return value;
+    return num;
 }
 
 double factor() {
-	if(syntax_error())
-		return 0;
-	
-	if(cur_token.type != token_NUMBER){
-		char *error_value = cur_token.value;
-		error("<factor> → <number>\n", error_value, "<number>");
-		return 0;
-	}
+	if (cur_token.type == token_NUMBER)
+		return number();
 
-	double value = number();
-	return value;
+	error("syntax error!!");
+	return 0;
 }
 
 // 단일 항을 계산하고 결과를 반환합니다.
 double term() {
-    double left = factor(); // 첫 번째 팩터
-
-	if(syntax_error())
-		return 0;
+    double result = factor(); // 첫 번째 팩터
 
     while (cur_token.type == token_TERMOP) {
         Token op = cur_token;
-		cur_token = get_token();
-
+        match(op.type);
         double right = factor();
-		if(syntax_error())
-			return 0;
 
         if (strcmp(op.value, "*") == 0) {
-            left *= right;
-		}
-
-        else if (strcmp(op.value, "/") == 0) {
-            left /= right;
+            result *= right;
+        } else if (strcmp(op.value, "/") == 0) {
+            if (right == 0) {
+                error("Division by zero");
+            }
+            result /= right;
         }
     }
-
-    return left;
+    return result;
 }
 
 // <aexpr> → <term> {( + | - ) <term>}
 double aexpr() {
     double result = term();
-	if(syntax_error())
-		return 0;
 
     while (cur_token.type == token_AEXPROP) {
         Token op = cur_token;
-		cur_token = get_token();
+        match(op.type);
 
         double right = term();
-		if(syntax_error())
-			return 0;
 
         if (strcmp(op.value, "+") == 0) {
             result += right;
@@ -339,17 +309,10 @@ double aexpr() {
 
 // <bexpr> → <number> <relop> <number>
 int bexpr() {
-    double left = number();
-	if(syntax_error())
-		return 0;
-
+    double left = number();  
     Token op = cur_token;
-	cur_token = get_token();
+    match(op.type);
     double right = number();
-	if(syntax_error()){
-		error("<bexpr> → <number> <relop> <number>", cur_token.value, "<number>");
-		return 0;
-	}
 
     if (strcmp(op.value, "==") == 0) {
         return left == right;
@@ -365,96 +328,72 @@ int bexpr() {
         return left >= right;
     }
 
-    return 0;
+    return 0; // 기본적으로 false를 반환
 }
 
 //next token을 loopkup해서 aexpr인지 bexpr인지 판단
-// <expr> → <bexpr> | <aexpr>
-void expr() {
+Variable expr() {
+
+	Variable var;
+	memset(&var, 0, sizeof(Variable));
 
 	Token next_token = lookup_next_token();
-	if (next_token.type == token_AEXPROP || next_token.type == token_TERMOP || next_token.type == token_SEMI) {
-		variables[var_pos].type = type_NUMBER;
-		variables[var_pos].value = aexpr();
-		var_pos++;
-		var_count++;
-		return ;
+	if (next_token.type == token_AEXPROP || next_token.type == token_TERMOP) {
+		double value = aexpr();
+		var.value = value;
+		var.type = type_NUMBER;
+		return var;
 	}
 	
 	if (next_token.type == token_RELOP) {
-		variables[var_pos].type = type_BOOLEAN;
-		variables[var_pos].isTrue = bexpr();
-		var_pos++;
-		var_count++;
-		return ;
+		int isTrue = bexpr();
+		var.isTrue = isTrue;
+		var.type = type_BOOLEAN;
+		return var;
 	}
 
-	error("<expr> → <bexpr> | <aexpr>", next_token.value, "<bexpr> or <aexpr>");
-	return ;
+	var.type = type_ERROR;
+	return var;
 }
-
-//<statement> → <var> = <expr> ; | print <var> ;
 
 void statement() {
-
-	if(variables[var_pos].type == type_ERROR)
-		return ;
-
     if (cur_token.type == token_VAR) {
-		strcpy(variables[var_pos].name, cur_token.value);
+        char varName[32];
+        strcpy(varName, cur_token.value);
+        match(token_VAR);
+        match(token_ASSIGN);
 
-		if(match(token_VAR, "<statement> → <var> = <expr> ; | print <var> ;\n", cur_token.value, "<var>") == 0)
-			return;
-	
-		if(match(token_ASSIGN, "<statement> → <var> = <expr> ; | print <var> ;\n", cur_token.value, "=") == 0)
-			return;
+		Variable var = expr();
+		set_var_value(varName, var.type, var.value, var.isTrue);
 
-		expr();
-
-		match(token_SEMI, "<statement> → <var> = <expr> ; | print <var> ;\n", cur_token.value, ";");
+        match(token_SEMI);
 		return ;
-    }
 
-	if (cur_token.type == token_PRINT) {
-		cur_token = get_token();
+    if (cur_token.type == token_PRINT) {
+        match(token_PRINT);
+		 int variable_index;
+        if (cur_token.type == token_VAR) {
+            variable_index =  find_variable(cur_token.value);
+			if (variable_index == -1) 
+				error("Variable not found");
+            match(token_VAR);
 
-		if(cur_token.type != token_VAR){
-			error("<statement> → <var> = <expr>\n", cur_token.value, "<var>");
-			return;
-		}
-
-        int variable_index =  find_variable(cur_token.value);
-		if (variable_index == -1) {
-			printf ("print variable not found it's not syntax error but it's runtime error\n");
-			return ;
-		}
+        }
+        match(token_SEMI);
 
 		Variable *var = &variables[variable_index];
-		cur_token = get_token();
-        
-		if(match(token_SEMI, "<statement> → <var> = <expr> ; | print <var>;", cur_token.value, ";") == 0)
-			return;
-		
-		if (var->type == type_NUMBER) {
-			sprintf(temp_buffer, "%s = %.1f\n", var->name, var->value);
-			strcat(result_buffer, temp_buffer);
-		} else if (var->type == type_BOOLEAN) {
-			sprintf(temp_buffer, "%s = %s\n", var->name, var->isTrue ? "TRUE" : "FALSE");
-			strcat(result_buffer, temp_buffer);
+        if (var->type == type_BOOLEAN) {
+            printf("%s\n", var->isTrue ? "TRUE" : "FALSE");
+        } else if (var->type == type_NUMBER) {
+			printf("%.2f\n", var->value);
 		}
+
 		return ;
-	}
 
-	return;
-}
-
-int find_error_index() {
-	for(int i = 0; i < var_count; i++) {
-		if(variables[i].type == type_ERROR) {
-			return i;
-		}
+    } else if (cur_token.type != token_TERMINATE) {
+		error("syntax error!!");
+    }
 	}
-	return -1;
 }
 
 void program() {
@@ -468,15 +407,7 @@ void program() {
             return;
         }
         statement();
-		if(syntax_error()){
-			int error_index = find_error_index();
-			if(error_index != -1)
-				return ;
-			printf("%s", variables[error_index].error_message);
-			return ;
-		}
     }
-	printf("%s", result_buffer);
 	return ;
 }
 
@@ -501,55 +432,47 @@ char* remove_space(char* str) {
 }
 
 int is_valid_input(char* str) {
+    // 문자열이 비어있거나 공백만 있는 경우
     if (str[0] == '\0' || str[0] == '\n') return 0;
 
+    // 문자열에 ANSI 이스케이프 시퀀스가 있는지 검사
     for (int i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\033') {
+        if (str[i] == '\033') { // '\033'은 ESC, ANSI 이스케이프 시퀀스의 시작
             return 0;
         }
 
+        // 제어 문자 검사 (0x00-0x1f 범위, 0x7f (DEL))
         if ((unsigned char)str[i] <= 0x1f || (unsigned char)str[i] == 0x7f) {
             return 0;
         }
     }
 
-    return 1;
+    return 1; // 입력이 유효
 }
 
-void init_static() {
-	pos = 0;
-	var_pos = 0;
-	var_count = 1;
-	memset(variables, 0, sizeof(variables));
-	memset(result_buffer, 0, BUFFER_LEN);
-	memset(temp_buffer, 0, INPUT_LEN);
-	memset(&cur_token, 0, sizeof(Token));
-}
 
 int main() {
+
 	char temp[INPUT_LEN];
 
 	while(1) {
-		memset(temp, 0, sizeof(temp));
     	printf(">> ");
-		if (!fgets(temp, INPUT_LEN, stdin)) {
-        	printf("EOF detected or error reading input. Exiting.\n");
-            break; 
-        }
+		// if (!fgets(temp, INPUT_LEN, stdin)) {
+        // 	printf("EOF detected or error reading input. Exiting.\n");
+        //     break; 
+        // }
 
-		input = remove_space(temp);
-
-		if(strcmp(input, "terminate") == 0)
-			break;
-
-		if (!is_valid_input(temp)) {
-			printf("Invalid input. Please try again.\n");
-			continue;
-		}
-
-    	init_static();
+		// input = remove_space(temp);
+		// if (!is_valid_input(temp)) {
+		// 	printf("Invalid input. Please try again.\n");
+		// 	continue;
+		// }
+		input = malloc(INPUT_LEN);
+		strcpy(input, "../");
+    	pos = 0;
     	program();
 	}
 
     return 0;
 }
+
